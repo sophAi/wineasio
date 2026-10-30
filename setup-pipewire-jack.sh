@@ -270,10 +270,21 @@ check_status() {
     done
 
     # Check PipeWire server
+    PW_ACTIVE=0
     if command -v pw-cli >/dev/null 2>&1 && pw-cli info 0 >/dev/null 2>&1; then
+        PW_ACTIVE=1
+    elif pgrep -x pipewire >/dev/null 2>&1; then
+        PW_ACTIVE=1
+    elif [ "$(run_user_systemctl is-active pipewire.service 2>/dev/null)" = "active" ]; then
+        PW_ACTIVE=1
+    fi
+
+    if [ "$PW_ACTIVE" -eq 1 ]; then
         echo -e "\n  PipeWire daemon:      ${GREEN}ACTIVE & READY${NC}"
     else
-        echo -e "\n  PipeWire daemon:      ${YELLOW}NOT DETECTED${NC}"
+        echo -e "\n  PipeWire daemon:      ${YELLOW}NOT RUNNING${NC}"
+        echo -e "  To start PipeWire, run as your normal user (without sudo):"
+        echo -e "    ${BOLD}systemctl --user start pipewire pipewire-pulse wireplumber${NC}"
     fi
 }
 

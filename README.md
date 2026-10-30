@@ -57,23 +57,134 @@ Pure WoW64: 32-bit PE (wineasio.dll) → WoW64 Thunking → 64-bit Unix (x86_64-
 
 ---
 
-## Quick Start: Automated Installation & Deployment
+## Quick Start: Deployment & Scripts Workflow
 
-WineASIO provides a unified script `install.sh` that automates system installation, GUI setup, runtime dependency checking, and WinePrefix registration.
+WineASIO provides automated management scripts for setting up the audio subsystem, installing libraries, and registering prefixes.
 
-### One-Command Setup
+### Recommended Workflow & Execution Order
 
-```sh
-sudo ./install.sh
+To achieve a trouble-free setup (especially avoiding soundcard conflicts and 32-bit WoW64 library issues), follow this recommended sequence:
+
+```
+┌────────────────────────────────────────────────────────┐
+│ Step 1: Audio Subsystem Setup (Run Once per Machine)   │
+│ sudo ./setup-pipewire-jack.sh                          │
+│ • Disables & blocks jackdbus auto-activation           │
+│ • Configures global PipeWire-JACK via dynamic linker   │
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ Step 2: System Installation & Driver Registration      │
+│ sudo ./install.sh                                      │
+│ • Auto-detects Wine (multiarch vs pure WoW64)          │
+│ • Installs 64-bit & 32-bit PE DLLs and Unix .so        │
+│ • Installs PyQt GUI control panel                      │
+│ • Registers drivers in default user WINEPREFIX         │
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ Step 3: (Optional) Register Additional Wine Prefixes   │
+│ wineasio-register                                      │
+│ or ./install.sh --register-only -p /path/to/prefix     │
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ Step 4: Verification & Configuration                   │
+│ ./install.sh --verify                                  │
+│ wineasio-settings                                      │
+└────────────────────────────────────────────────────────┘
 ```
 
-This single command will:
-1. **Detect Wine Environment:** Automatically locates Wine (Staging, Stable, or custom) and targets your user's Wine prefix (`~/.wine`) without root permission corruption.
-2. **Check Audio Dependencies:** Validates 64-bit and 32-bit JACK / PipeWire-JACK libraries and audio group membership.
-3. **Install System Libraries:** Installs 64-bit and 32-bit PE DLLs and Unix `.so` files to Wine's system directories with multiarch auto-detection.
-4. **Install GUI Control Panel:** Installs `wineasio-settings` to `/usr/bin/wineasio-settings`.
-5. **Register Drivers:** Registers both 64-bit (`wineasio64.dll`) and 32-bit WoW64 (`wineasio.dll`) drivers cleanly.
-6. **Verify Status:** Verifies registry keys (`HKLM\Software\ASIO\WineASIO` and `HKLM\Software\WOW6432Node\ASIO\WineASIO`).
+---
+
+### Script Reference & Parameter Details
+
+#### 1. `setup-pipewire-jack.sh` (or `disable-jackdbus.sh`)
+**Purpose:** Prepares your Linux audio subsystem for WineASIO by resolving conflicts between traditional `jackd2`/`jackdbus` and PipeWire.
+
+* **Usage:** `sudo ./setup-pipewire-jack.sh [OPTIONS]`
+* **Options:**
+  | Option | Description |
+  | :--- | :--- |
+  | `--all` | *(Default)* Perform all actions: stop jackdbus, mask systemd, block D-Bus auto-activation, and configure system-wide ldconfig for PipeWire-JACK. |
+  | `--status` | Display current operational status of jackdbus, D-Bus overrides, ldconfig resolution, and PipeWire daemon. |
+  | `--disable-jackdbus` | Only stop running jackdbus processes and block auto-spawn via systemd mask and D-Bus override. |
+  | `--global-jack` | Only configure `/etc/ld.so.conf.d/pipewire-jack.conf` and update dynamic linker cache. |
+  | `--restore`, `--revert` | Completely undo all changes and restore distribution default JACK configuration. |
+  | `-h`, `--help` | Show usage and help information. |
+
+* **Example:**
+  ```bash
+  # Recommended one-time setup:
+  sudo ./setup-pipewire-jack.sh
+
+  # Check subsystem status anytime:
+  ./setup-pipewire-jack.sh --status
+  ```
+
+---
+
+#### 2. `install.sh`
+**Purpose:** Comprehensive deployment, system installation, and WINEPREFIX registration tool. Can be used on developer machines or target machines using prebuilt binaries.
+
+* **Usage:** `./install.sh [OPTIONS]` (Run with `sudo` for system installation)
+* **Options:**
+  | Option | Description |
+  | :--- | :--- |
+  | `--all` | *(Default)* Complete installation: Wine detection, dependency checks, copying DLL/SO, GUI setup, prefix registration, and verification. |
+  | `--install-only` | Only install libraries and GUI to Wine system directories (requires `sudo`). Does not modify user prefix. |
+  | `--register-only` | Only register WineASIO in target WINEPREFIX (run as normal user without `sudo`). |
+  | `--verify` | Inspect system files and verify Wine registry keys (`HKLM\Software\ASIO\WineASIO` & WOW6432Node). |
+  | `--unregister` | Unregister WineASIO COM classes and delete registry entries from target prefix. |
+  | `--package` | Package existing prebuilt binaries, scripts, and documentation into a standalone deployment tarball (`wineasio-deploy-YYYYMMDD.tar.gz`). |
+  | `-p`, `--prefix <DIR>` | Specify target WINEPREFIX (Default: `$HOME/.wine` or `$WINEPREFIX`). |
+  | `-w`, `--wine-dir <DIR>` | Specify Wine installation prefix (e.g., `/opt/wine-staging`, `/opt/wine-stable`, or `/usr`). |
+  | `-h`, `--help` | Show command-line options. |
+
+* **Examples:**
+  ```bash
+  # Standard installation for system + default user prefix:
+  sudo ./install.sh
+
+  # Register WineASIO in a custom gaming / DAW prefix:
+  ./install.sh --register-only -p ~/.wine-daw
+
+  # Verify an existing prefix:
+  ./install.sh --verify -p ~/.wine-daw
+
+  # Create a portable installer bundle to copy to another PC:
+  ./install.sh --package
+  ```
+
+---
+
+#### 3. `wineasio-register`
+**Purpose:** Lightweight convenience command to quickly register WineASIO inside any Wine prefix.
+
+* **Usage:** `wineasio-register [OPTIONS]` or `env WINEPREFIX=... wineasio-register`
+* Internally forwards to `install.sh --register-only`.
+
+---
+
+#### 4. `Makefile.wine11`
+**Purpose:** Build system for Wine 11+ and Wine 10.2+ (PE/Unix split architecture).
+
+* **Usage:** `make -f Makefile.wine11 [TARGET]`
+* **Targets:**
+  | Target | Description |
+  | :--- | :--- |
+  | `all` | *(Default)* Build both 64-bit and 32-bit PE DLLs and Unix .so files. |
+  | `64` | Build only 64-bit `wineasio64.dll` and `wineasio64.so`. |
+  | `32` | Build only 32-bit `wineasio.dll` and `wineasio.so` (with `-malign-double` and `-static-libgcc`). |
+  | `install` | Install PE DLLs, Unix SOs, and GUI to system Wine directory, and register in prefix. |
+  | `install64` | Install 64-bit files to system. |
+  | `install32` | Install 32-bit files to system (auto-detects `i386-unix` vs `x86_64-unix`). |
+  | `install-gui` | Build and install PyQt settings GUI and launchers. |
+  | `register` | Register built-in DLLs via `regsvr32` in the current WINEPREFIX. |
+  | `verify` | Check installed files and registry entries. |
+  | `clean` | Remove build artifacts from `build_wine11/`. |
+
+---
 
 ### Deploying to Other Computers (Portable Package)
 
@@ -88,26 +199,15 @@ You can package prebuilt binaries into a standalone, portable deployment tarball
 # 3. On the target PC, extract and install:
 tar -xzvf wineasio-deploy-*.tar.gz
 cd wineasio-deploy-*
+sudo ./setup-pipewire-jack.sh
 sudo ./install.sh
 ```
 
-If the target machine runs 32-bit audio applications (e.g., OpenMPT 32-bit, S-YXG100), ensure 32-bit JACK support is installed:
+If the target machine runs 32-bit audio applications (e.g., OpenMPT 32-bit, S-YXG100, FL Studio 32-bit), ensure 32-bit JACK support is installed:
 ```sh
 # Ubuntu / Debian / Mint:
 sudo apt install pipewire-jack:i386
 ```
-
-### Script Options
-
-| Option | Description |
-| :--- | :--- |
-| `sudo ./install.sh` | Full installation, setup, registration, and verification (Default) |
-| `./install.sh --register-only` | Register WineASIO in current user's `~/.wine` without root permissions |
-| `./install.sh --register-only --prefix ~/.custom-prefix` | Register into a specific custom Wine prefix |
-| `./install.sh --verify` | Verify current installation and registry status |
-| `./install.sh --unregister` | Unregister WineASIO from Wine prefix |
-| `./install.sh --package` | Bundle binaries and installer for deploying to another computer |
-| `wineasio-register` | Standard alias for `./install.sh --register-only` |
 
 ---
 

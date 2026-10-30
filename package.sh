@@ -70,7 +70,9 @@ SOURCE_FILES=(
 
     # Scripts
     "wineasio-register"
-    "wineasio-register.sh"
+    "install.sh"
+    "setup-pipewire-jack.sh"
+    "disable-jackdbus.sh"
     "package.sh"
 
     # Assets

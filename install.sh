@@ -362,10 +362,6 @@ register_prefix() {
         run_as_user cp -f "$DLL32" "$SYS32/wineasio.dll"
     fi
 
-    if [ -d "$SYSWOW64" ]; then
-        run_as_user cp -f "$DLL32" "$SYSWOW64/wineasio.dll"
-    fi
-
     # Register 64-bit DLL
     echo "  Registering 64-bit WineASIO driver (regsvr32 /s wineasio64.dll)..."
     run_as_user wine regsvr32 /s wineasio64.dll 2>/dev/null || true
