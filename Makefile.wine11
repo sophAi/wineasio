@@ -196,7 +196,9 @@ install64: $(BUILD_DIR)/$(DLL64) $(BUILD_DIR)/$(SO64)
 	@echo "Installing 64-bit WineASIO..."
 	$(SUDO) mkdir -p $(INSTALL_DIR64) $(INSTALL_UNIX64)
 	$(SUDO) cp $(BUILD_DIR)/$(DLL64) $(INSTALL_DIR64)/
-	$(SUDO) cp $(BUILD_DIR)/$(SO64) $(INSTALL_UNIX64)/
+	$(SUDO) cp $(BUILD_DIR)/$(SO64) $(INSTALL_UNIX64)/wineasio64.so
+	# In Wine 11 WoW64, 32-bit PE DLL also loads wineasio.so from x86_64-unix (must be 64-bit)
+	$(SUDO) cp $(BUILD_DIR)/$(SO64) $(INSTALL_UNIX64)/wineasio.so
 	-$(SUDO) $(WINEBUILD) --builtin $(INSTALL_DIR64)/$(DLL64) 2>/dev/null || true
 	@if [ -d "$${WINEPREFIX:-$$HOME/.wine}/drive_c/windows/system32" ]; then \
 		cp $(BUILD_DIR)/$(DLL64) "$${WINEPREFIX:-$$HOME/.wine}/drive_c/windows/system32/"; \

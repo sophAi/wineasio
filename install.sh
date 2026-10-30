@@ -299,10 +299,14 @@ install_system() {
     echo "  Copying 64-bit files..."
     $SUDO_CMD cp -f "$DLL64" "$INSTALL_WIN64/wineasio64.dll"
     $SUDO_CMD cp -f "$SO64" "$INSTALL_UNIX64/wineasio64.so"
+    # In Wine 11 WoW64, 32-bit PE DLL loads wineasio.so from x86_64-unix (must be 64-bit SO with WoW64 thunk)
+    $SUDO_CMD cp -f "$SO64" "$INSTALL_UNIX64/wineasio.so"
 
     echo "  Copying 32-bit files..."
     $SUDO_CMD cp -f "$DLL32" "$INSTALL_WIN32/wineasio.dll"
-    $SUDO_CMD cp -f "$SO32" "$INSTALL_UNIX32/wineasio.so"
+    if [ "$INSTALL_UNIX32" != "$INSTALL_UNIX64" ]; then
+        $SUDO_CMD cp -f "$SO32" "$INSTALL_UNIX32/wineasio.so"
+    fi
 
     # If winebuild is available, mark DLLs as builtins
     if command -v winebuild >/dev/null 2>&1; then
@@ -348,9 +352,13 @@ register_prefix() {
     SYS32="$TARGET_WINEPREFIX/drive_c/windows/system32"
     SYSWOW64="$TARGET_WINEPREFIX/drive_c/windows/syswow64"
 
-    if [ -d "$SYS32" ]; then
+    if [ -d "$SYSWOW64" ]; then
+        # 64-bit WoW64 prefix: 64-bit in system32, 32-bit in syswow64
         run_as_user cp -f "$DLL64" "$SYS32/wineasio64.dll"
-        # Also put 32-bit dll in system32 for pure 32-bit wineprefixes
+        run_as_user cp -f "$DLL32" "$SYSWOW64/wineasio.dll"
+        run_as_user rm -f "$SYS32/wineasio.dll" 2>/dev/null || true
+    elif [ -d "$SYS32" ]; then
+        # Pure 32-bit prefix
         run_as_user cp -f "$DLL32" "$SYS32/wineasio.dll"
     fi
 
