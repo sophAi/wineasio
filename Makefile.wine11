@@ -13,8 +13,11 @@
 #
 
 # Wine installation prefix
-WINE_PREFIX ?= /opt/wine-stable
-# Alternative: /usr
+WINE_PREFIX ?= /opt/wine-staging
+# Alternative: /opt/wine-stable, /usr
+
+# Sudo command (empty if not needed)
+SUDO ?=
 
 # Build directory
 BUILD_DIR = build_wine11
@@ -82,9 +85,18 @@ NTDLL_LIB64 = $(BUILD_DIR)/libntdll_wine64.a
 # Installation directories
 INSTALL_DIR32 = $(WINE_PREFIX)/lib/wine/i386-windows
 INSTALL_DIR64 = $(WINE_PREFIX)/lib/wine/x86_64-windows
-# WINE 11 WoW64 FIX: Both 32-bit and 64-bit Unix .so go to x86_64-unix/
-# There is no i386-unix in Wine 11 WoW64 builds - all Unix code is 64-bit
-INSTALL_UNIX32 = $(WINE_PREFIX)/lib/wine/x86_64-unix
+
+# Multiarch vs pure new WoW64 detection:
+# If i386-unix directory exists, 32-bit Wine uses a 32-bit Unix .so.
+# Otherwise (pure WoW64), it uses 64-bit Unix .so in x86_64-unix/.
+HAS_I386_UNIX := $(wildcard $(WINE_PREFIX)/lib/wine/i386-unix)
+ifneq ($(HAS_I386_UNIX),)
+  SO32_ARCH = -m32 -malign-double
+  INSTALL_UNIX32 = $(WINE_PREFIX)/lib/wine/i386-unix
+else
+  SO32_ARCH = -m64
+  INSTALL_UNIX32 = $(WINE_PREFIX)/lib/wine/x86_64-unix
+endif
 INSTALL_UNIX64 = $(WINE_PREFIX)/lib/wine/x86_64-unix
 
 # GUI installation
@@ -164,12 +176,11 @@ $(BUILD_DIR)/$(SO64): $(UNIX_SOURCES) unixlib.h | $(BUILD_DIR)
 		-o $@ $(UNIX_SOURCES) \
 		$(UNIX_LDFLAGS) $(UNIX_LIBS)
 
-# 32-bit Unix .so - ACTUALLY 64-bit for Wine 11 WoW64!
-# In Wine 11 WoW64, the 32-bit PE DLL loads a 64-bit Unix .so via WoW64 thunking.
-# There is no 32-bit Unix side in Wine WoW64 - all Unix code runs in 64-bit.
+# 32-bit Unix .so
+# Uses SO32_ARCH (-m32 if multiarch i386-unix exists, or -m64 for pure new WoW64)
 $(BUILD_DIR)/$(SO32): $(UNIX_SOURCES) unixlib.h | $(BUILD_DIR)
-	@echo "Building Unix .so for 32-bit PE (64-bit binary for Wine WoW64)..."
-	$(GCC) $(UNIX_CFLAGS) -m64 \
+	@echo "Building Unix .so for 32-bit PE ($(SO32_ARCH))..."
+	$(GCC) $(UNIX_CFLAGS) $(SO32_ARCH) \
 		-o $@ $(UNIX_SOURCES) \
 		$(UNIX_LDFLAGS) $(UNIX_LIBS)
 
@@ -183,34 +194,40 @@ install: install64 install32 install-gui register
 
 install64: $(BUILD_DIR)/$(DLL64) $(BUILD_DIR)/$(SO64)
 	@echo "Installing 64-bit WineASIO..."
-	sudo mkdir -p $(INSTALL_DIR64) $(INSTALL_UNIX64)
-	sudo cp $(BUILD_DIR)/$(DLL64) $(INSTALL_DIR64)/
-	sudo cp $(BUILD_DIR)/$(SO64) $(INSTALL_UNIX64)/
-	-sudo $(WINEBUILD) --builtin $(INSTALL_DIR64)/$(DLL64) 2>/dev/null || true
+	$(SUDO) mkdir -p $(INSTALL_DIR64) $(INSTALL_UNIX64)
+	$(SUDO) cp $(BUILD_DIR)/$(DLL64) $(INSTALL_DIR64)/
+	$(SUDO) cp $(BUILD_DIR)/$(SO64) $(INSTALL_UNIX64)/
+	-$(SUDO) $(WINEBUILD) --builtin $(INSTALL_DIR64)/$(DLL64) 2>/dev/null || true
+	@if [ -d "$${WINEPREFIX:-$$HOME/.wine}/drive_c/windows/system32" ]; then \
+		cp $(BUILD_DIR)/$(DLL64) "$${WINEPREFIX:-$$HOME/.wine}/drive_c/windows/system32/"; \
+	fi
 	@echo "64-bit installation complete"
 
 install32: $(BUILD_DIR)/$(DLL32) $(BUILD_DIR)/$(SO32)
-	@echo "Installing 32-bit WineASIO (PE to i386-windows, Unix to x86_64-unix)..."
-	sudo mkdir -p $(INSTALL_DIR32) $(INSTALL_UNIX32)
-	sudo cp $(BUILD_DIR)/$(DLL32) $(INSTALL_DIR32)/
-	sudo cp $(BUILD_DIR)/$(SO32) $(INSTALL_UNIX32)/
-	-sudo $(WINEBUILD) --builtin $(INSTALL_DIR32)/$(DLL32) 2>/dev/null || true
-	@echo "32-bit installation complete (Unix .so is 64-bit for Wine WoW64)"
+	@echo "Installing 32-bit WineASIO (PE to i386-windows, Unix to $(INSTALL_UNIX32))..."
+	$(SUDO) mkdir -p $(INSTALL_DIR32) $(INSTALL_UNIX32)
+	$(SUDO) cp $(BUILD_DIR)/$(DLL32) $(INSTALL_DIR32)/
+	$(SUDO) cp $(BUILD_DIR)/$(SO32) $(INSTALL_UNIX32)/
+	-$(SUDO) $(WINEBUILD) --builtin $(INSTALL_DIR32)/$(DLL32) 2>/dev/null || true
+	@if [ -d "$${WINEPREFIX:-$$HOME/.wine}/drive_c/windows/syswow64" ]; then \
+		cp $(BUILD_DIR)/$(DLL32) "$${WINEPREFIX:-$$HOME/.wine}/drive_c/windows/syswow64/"; \
+	fi
+	@echo "32-bit installation complete"
 
 install-gui: build-gui-launchers
 	@echo "Installing WineASIO Settings GUI..."
-	sudo mkdir -p $(DESTDIR)$(GUI_BIN_DIR)
-	sudo mkdir -p $(DESTDIR)$(GUI_SHARE_DIR)
+	$(SUDO) mkdir -p $(DESTDIR)$(GUI_BIN_DIR)
+	$(SUDO) mkdir -p $(DESTDIR)$(GUI_SHARE_DIR)
 	# Install Python files
-	sudo install -m 644 gui/settings.py $(DESTDIR)$(GUI_SHARE_DIR)/
-	sudo install -m 644 gui/ui_settings.py $(DESTDIR)$(GUI_SHARE_DIR)/
+	$(SUDO) install -m 644 gui/settings.py $(DESTDIR)$(GUI_SHARE_DIR)/
+	$(SUDO) install -m 644 gui/ui_settings.py $(DESTDIR)$(GUI_SHARE_DIR)/
 	# Install launcher script
-	sudo install -m 755 gui/wineasio-settings $(DESTDIR)$(GUI_BIN_DIR)/
+	$(SUDO) install -m 755 gui/wineasio-settings $(DESTDIR)$(GUI_BIN_DIR)/
 	# Adjust PREFIX in launcher script
-	sudo sed -i "s?X-PREFIX-X?$(PREFIX)?" $(DESTDIR)$(GUI_BIN_DIR)/wineasio-settings
+	$(SUDO) sed -i "s?X-PREFIX-X?$(PREFIX)?" $(DESTDIR)$(GUI_BIN_DIR)/wineasio-settings
 	# Install Windows launcher executables (for use from FL Studio etc.)
-	sudo install -m 755 gui/wineasio-settings.exe $(DESTDIR)$(GUI_SHARE_DIR)/ 2>/dev/null || true
-	sudo install -m 755 gui/wineasio-settings64.exe $(DESTDIR)$(GUI_SHARE_DIR)/ 2>/dev/null || true
+	$(SUDO) install -m 755 gui/wineasio-settings.exe $(DESTDIR)$(GUI_SHARE_DIR)/ 2>/dev/null || true
+	$(SUDO) install -m 755 gui/wineasio-settings64.exe $(DESTDIR)$(GUI_SHARE_DIR)/ 2>/dev/null || true
 	@echo "GUI installation complete"
 	@echo ""
 	@echo "To use the ASIO Control Panel from FL Studio or other DAWs:"
@@ -225,25 +242,26 @@ build-gui-launchers:
 
 uninstall-gui:
 	@echo "Removing WineASIO Settings GUI..."
-	sudo rm -f $(DESTDIR)$(GUI_BIN_DIR)/wineasio-settings
-	sudo rm -rf $(DESTDIR)$(GUI_SHARE_DIR)
+	$(SUDO) rm -f $(DESTDIR)$(GUI_BIN_DIR)/wineasio-settings
+	$(SUDO) rm -rf $(DESTDIR)$(GUI_SHARE_DIR)
 	@echo "GUI removed"
 
 register:
 	@echo ""
 	@echo "Registering WineASIO..."
 	@echo "  64-bit registration..."
-	-wine regsvr32 wineasio64.dll 2>/dev/null || true
+	-wine regsvr32 /s wineasio64.dll 2>/dev/null || true
 	@echo "  32-bit registration (using syswow64 regsvr32 for WoW64)..."
-	-wine ~/.wine/drive_c/windows/syswow64/regsvr32.exe wineasio.dll 2>/dev/null || true
+	-wine "$$(wine winepath -u 'C:\windows\syswow64\regsvr32.exe' 2>/dev/null || echo ~/.wine/drive_c/windows/syswow64/regsvr32.exe)" /s wineasio.dll 2>/dev/null || true
 	@echo ""
 	@echo "Registration complete. You can verify with:"
 	@echo "  wine reg query 'HKLM\\Software\\ASIO\\WineASIO'"
+	@echo "  wine reg query 'HKLM\\Software\\WOW6432Node\\ASIO\\WineASIO'"
 
 unregister:
 	@echo "Unregistering WineASIO..."
-	-wine regsvr32 /u wineasio64.dll 2>/dev/null || true
-	-wine ~/.wine/drive_c/windows/syswow64/regsvr32.exe /u wineasio.dll 2>/dev/null || true
+	-wine regsvr32 /s /u wineasio64.dll 2>/dev/null || true
+	-wine "$$(wine winepath -u 'C:\windows\syswow64\regsvr32.exe' 2>/dev/null || echo ~/.wine/drive_c/windows/syswow64/regsvr32.exe)" /s /u wineasio.dll 2>/dev/null || true
 
 clean:
 	rm -rf $(BUILD_DIR)

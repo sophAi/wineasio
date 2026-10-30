@@ -241,7 +241,18 @@ static BOOL load_jack(void)
         return TRUE;
     }
     
-    jack_handle = dlopen("libjack.so.0", RTLD_NOW);
+    /* Try PipeWire-JACK first to avoid conflicts with traditional jackd2 libraries */
+#if defined(__i386__) || defined(_M_IX86)
+    jack_handle = dlopen("/usr/lib/i386-linux-gnu/pipewire-0.3/jack/libjack.so.0", RTLD_NOW);
+#elif defined(__x86_64__) || defined(_M_X64)
+    jack_handle = dlopen("/usr/lib/x86_64-linux-gnu/pipewire-0.3/jack/libjack.so.0", RTLD_NOW);
+#endif
+
+    /* Fallback to default libjack.so.0 */
+    if (!jack_handle) {
+        jack_handle = dlopen("libjack.so.0", RTLD_NOW);
+    }
+
     if (!jack_handle) {
         ERR("Could not load JACK library: %s\n", dlerror());
         return FALSE;

@@ -105,6 +105,18 @@ class Ui_WineASIOSettings(object):
         self.layout_jack_buffer_size.setStretch(0, 1)
         self.layout_jack_buffer_size.setStretch(1, 1)
         self.verticalLayout_23.addLayout(self.layout_jack_buffer_size)
+        self.layout_jack_sample_rate = QHBoxLayout()
+        self.layout_jack_sample_rate.setObjectName("layout_jack_sample_rate")
+        self.label_jack_sample_rate = QLabel(self.group_jack)
+        self.label_jack_sample_rate.setAlignment(Qt.AlignRight|Qt.AlignTrailing|Qt.AlignVCenter)
+        self.label_jack_sample_rate.setObjectName("label_jack_sample_rate")
+        self.layout_jack_sample_rate.addWidget(self.label_jack_sample_rate)
+        self.cb_jack_sample_rate = QComboBox(self.group_jack)
+        self.cb_jack_sample_rate.setObjectName("cb_jack_sample_rate")
+        self.layout_jack_sample_rate.addWidget(self.cb_jack_sample_rate)
+        self.layout_jack_sample_rate.setStretch(0, 1)
+        self.layout_jack_sample_rate.setStretch(1, 1)
+        self.verticalLayout_23.addLayout(self.layout_jack_sample_rate)
         self.layout_jack_output_buffering = QHBoxLayout()
         self.layout_jack_output_buffering.setObjectName("layout_jack_output_buffering")
         self.label_jack_output_buffering = QLabel(self.group_jack)
@@ -163,6 +175,9 @@ class Ui_WineASIOSettings(object):
 "Default is on"))
         self.cb_jack_fixed_bsize.setText(_tr(self.OBJECT_NAME, "Fixed buffersize"))
         self.label_jack_buffer_size.setText(_tr(self.OBJECT_NAME, "Preferred buffersize:"))
+        self.label_jack_sample_rate.setText(_tr(self.OBJECT_NAME, "Sample rate (PipeWire):"))
+        self.label_jack_sample_rate.setToolTip(_tr(self.OBJECT_NAME, "Global sample rate for PipeWire and JACK clients.\n"
+"Changes take effect immediately across all applications."))
         self.label_jack_output_buffering.setToolTip(_tr(self.OBJECT_NAME, "How many JACK periods the output of the host waits before JACK sends it.\n"
 "Off: sent in the same JACK cycle, the host has to finish within one period.\n"
 "1 or 2 periods: more time for the host, and one or two periods of added\n"

@@ -41,6 +41,33 @@ from ui_settings import Ui_WineASIOSettings
 # ---------------------------------------------------------------------------------------------------------------------
 
 BUFFER_SIZE_LIST = (16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192)
+SAMPLE_RATE_LIST = ("Auto (System Default)", "44100", "48000", "88200", "96000", "192000")
+
+def getPipeWireSettings():
+    rate = "Auto (System Default)"
+    try:
+        out = subprocess.check_output(["pw-metadata", "-n", "settings", "0"], text=True, stderr=subprocess.DEVNULL)
+        m_force = re.search(r"key:'clock\.force-rate'\s+value:'(\d+)'", out)
+        m_rate = re.search(r"key:'clock\.rate'\s+value:'(\d+)'", out)
+        if m_force and m_force.group(1) != "0":
+            rate = m_force.group(1)
+        elif m_rate:
+            rate = m_rate.group(1)
+    except Exception:
+        pass
+    return rate
+
+def applyPipeWireSettings(sample_rate_str: str, buffer_size: int = None):
+    try:
+        if sample_rate_str.startswith("Auto"):
+            subprocess.run(["pw-metadata", "-n", "settings", "0", "clock.force-rate", "0"], check=False)
+        else:
+            subprocess.run(["pw-metadata", "-n", "settings", "0", "clock.force-rate", sample_rate_str], check=False)
+        
+        if buffer_size:
+            subprocess.run(["pw-metadata", "-n", "settings", "0", "clock.force-quantum", str(buffer_size)], check=False)
+    except Exception as e:
+        print("wineasio-settings: failed to apply pipewire settings:", e, file=sys.stderr)
 
 HOME = QDir.homePath()
 
@@ -157,6 +184,7 @@ class WineASIOSettingsDialog(QDialog, Ui_WineASIOSettings):
         self.cb_jack_autostart.clicked.connect(self.slot_flagChanged)
         self.cb_jack_fixed_bsize.clicked.connect(self.slot_flagChanged)
         self.cb_jack_buffer_size.currentIndexChanged[int].connect(self.slot_flagChanged)
+        self.cb_jack_sample_rate.currentIndexChanged[int].connect(self.slot_flagChanged)
         self.cb_jack_output_buffering.currentIndexChanged[int].connect(self.slot_flagChanged)
 
     def loadSettings(self):
@@ -177,6 +205,12 @@ class WineASIOSettingsDialog(QDialog, Ui_WineASIOSettings):
             self.cb_jack_buffer_size.addItem(str(bsize))
             if bsize == prefer_bsize:
                 self.cb_jack_buffer_size.setCurrentIndex(self.cb_jack_buffer_size.count()-1)
+
+        current_rate = getPipeWireSettings()
+        for srate in SAMPLE_RATE_LIST:
+            self.cb_jack_sample_rate.addItem(srate)
+            if srate == current_rate:
+                self.cb_jack_sample_rate.setCurrentIndex(self.cb_jack_sample_rate.count()-1)
 
         self.sb_ports_in.setValue(ins)
         self.sb_ports_out.setValue(outs)
@@ -201,6 +235,7 @@ class WineASIOSettingsDialog(QDialog, Ui_WineASIOSettings):
         self.cb_jack_autostart.setChecked(False)
         self.cb_jack_fixed_bsize.setChecked(True)
         self.cb_jack_buffer_size.setCurrentIndex(BUFFER_SIZE_LIST.index(1024))
+        self.cb_jack_sample_rate.setCurrentIndex(SAMPLE_RATE_LIST.index("44100") if "44100" in SAMPLE_RATE_LIST else 0)
         self.cb_jack_output_buffering.setCurrentIndex(0)
 
     @pyqtSlot()
@@ -229,6 +264,11 @@ class WineASIOSettingsDialog(QDialog, Ui_WineASIOSettings):
             print("wineasio-settings: cannot run %s: %s" % (command[0], e), file=sys.stderr)
         finally:
             os.unlink(regfile)
+
+        # Apply sample rate and buffer size to PipeWire
+        target_srate = self.cb_jack_sample_rate.currentText()
+        target_bsize = int(self.cb_jack_buffer_size.currentText())
+        applyPipeWireSettings(target_srate, target_bsize)
 
 # ---------------------------------------------------------------------------------------------------------------------
 

@@ -30,17 +30,21 @@ This setup proves that Linux is a fully viable platform for professional audio p
 
 Wine 11 (released January 13, 2026) introduced a new DLL architecture that separates PE (Windows) code from Unix code. This required a complete rewrite of WineASIO's build system and internal architecture.
 
-### Important: Wine 11 WoW64 Architecture
+### Important: Wine 11 WoW64 & Multiarch Architecture
 
-In Wine 11 WoW64, **32-bit PE DLLs use 64-bit Unix libraries**. This is different from traditional Wine where 32-bit used 32-bit Unix libraries.
+Wine 11 supports two common packaging and runtime architectures for 32-bit applications:
+
+1. **Multiarch WoW64 (Common on Ubuntu / Debian / WineHQ packages)**:
+   The Wine prefix retains a 32-bit Unix side (`i386-unix/`). The 32-bit PE DLL (`wineasio.dll`) loads a 32-bit Unix shared library (`wineasio.so` in `i386-unix/`). In this mode, `-malign-double` is automatically applied to guarantee binary struct ABI alignment between 32-bit Linux and 32-bit Windows.
+2. **Pure New WoW64 (Upstream / Experimental)**:
+   There is no 32-bit Unix side. Both 32-bit and 64-bit PE DLLs thunk to a 64-bit Unix library (`wineasio.so` in `x86_64-unix/`).
+
+`Makefile.wine11` **automatically detects** your installation (by checking for the existence of `$(WINE_PREFIX)/lib/wine/i386-unix`) and selects the correct compiler flags and installation targets.
 
 ```
-32-bit PE (wineasio.dll) → WoW64 Thunking → 64-bit Unix (wineasio.so)
+Multiarch: 32-bit PE (wineasio.dll) → 32-bit Unix (i386-unix/wineasio.so)
+Pure WoW64: 32-bit PE (wineasio.dll) → WoW64 Thunking → 64-bit Unix (x86_64-unix/wineasio.so)
 ```
-
-This means:
-- `wineasio.dll` (32-bit PE) is installed to `i386-windows/`
-- `wineasio.so` (64-bit Unix!) is installed to `x86_64-unix/` (NOT `i386-unix/`)
 
 ### Wine Version Compatibility
 
@@ -241,12 +245,13 @@ At 128 frames / 48 kHz the three settings add 0, 2.67 and 5.33 ms of output late
 
 ### GUI Control Panel (Wine 11)
 
-A PyQt5/PyQt6 control panel is included for configuring WineASIO settings. When you click "Show ASIO Panel" in your DAW (e.g., FL Studio, Reaper), WineASIO launches the native Linux settings GUI.
+A PyQt5/PyQt6 control panel is included for configuring WineASIO settings and managing PipeWire integration. When you click "Show ASIO Panel" in your DAW (e.g., FL Studio, Reaper, OpenMPT), WineASIO launches the native Linux settings GUI.
 
 **How it works:**
 1. Your DAW calls the ASIO `ControlPanel()` function
 2. WineASIO's Unix-side code uses `fork()/exec()` to launch `wineasio-settings`
 3. The Python/PyQt GUI reads and writes settings to the Wine registry, through the `regedit` of the Wine installation that runs the DAW (found from the DAW process); started any other way, it uses the `regedit` in `PATH`
+4. **PipeWire Real-time Control**: The panel allows directly selecting the global PipeWire sample rate (`Auto`, `44100`, `48000`, `88200`, `96000`, `192000`) and dynamically updates the system clock rate and quantum (buffer size) via `pw-metadata` upon saving.
 
 The panel sets every option in the table above except Client name. Below the options it lists the `WINEASIO_*` variables set in its environment in a format the driver accepts, since these take precedence over what the panel saves; opened from the DAW, that is the DAW's environment.
 
@@ -358,42 +363,50 @@ x86_64-w64-mingw32-objdump -p wineasio.dll | grep 'DLL Name'
 # expected: ADVAPI32.dll, KERNEL32.dll, msvcrt.dll — and nothing else
 ```
 
-### JACK not connecting
+### JACK not connecting / PipeWire-JACK
 
-1. Ensure JACK is running: `jack_lsp`
-2. Check WineASIO JACK client: `jack_lsp | grep -i wine`
-3. Use QjackCtl or Carla to manage connections
+1. If using PipeWire, ensure `pipewire-jack` (and `pipewire-jack:i386` for 32-bit apps) is installed.
+2. WineASIO automatically prioritizes PipeWire's `libjack.so.0` path (`/usr/lib/.../pipewire-0.3/jack/libjack.so.0`) to avoid conflicts with traditional inactive `jackd` sockets (`status=0x11`).
+3. To configure PipeWire's default sample rate persistently across reboots (e.g., 44.1 kHz), add `~/.config/pipewire/pipewire.conf.d/10-clock.conf`:
+   ```spa-json
+   context.properties = {
+       default.clock.rate          = 44100
+       default.clock.allowed-rates = [ 44100 48000 88200 96000 192000 ]
+   }
+   ```
+4. Check running ports with `jack_lsp` (or `pw-jack jack_lsp`).
 
-### 32-bit apps not finding WineASIO
+### 32-bit apps: crash on playback (`c0000409`) or sample rate reads 0 Hz
 
-32-bit Windows apps use WoW64. Ensure:
-- `wineasio.dll` is in `i386-windows/`
-- `wineasio.so` is in `x86_64-unix/` (NOT `i386-unix/` - Wine 11 WoW64 uses 64-bit Unix libs!)
-- Register with 32-bit regsvr32: `wine regsvr32 wineasio.dll`
+Symptom: In 32-bit DAWs (such as OpenMPT 32-bit), WineASIO initializes, but crashing occurs on playback or selecting WineASIO gives:
+```
+wineasio:err: Unhandled exception code c0000409
+```
+This is caused by a struct ABI alignment mismatch between 32-bit Linux (where `double` aligns to 4 bytes in SysV i386 ABI) and 32-bit Windows (where `double` aligns to 8 bytes). This offset error caused `GetSampleRate()` to return `0.000000 Hz`, triggering division-by-zero crashes in DAWs.
 
-### No audio from 32-bit apps (Wine 11)
+**Fix:** `Makefile.wine11` now compiles 32-bit Unix libraries with `-malign-double`, ensuring 100% binary compatibility with 32-bit Windows structures.
 
-If 32-bit apps load WineASIO but produce no audio:
-1. Verify `wineasio.so` is 64-bit: `file /path/to/wine/x86_64-unix/wineasio.so` should say "ELF 64-bit"
-2. Check for `[WineASIO-Unix]` debug messages - if missing, Unix library not loading
-3. Rebuild with `make -f Makefile.wine11 32` and reinstall
+### 32-bit apps not finding WineASIO (`status 0xc0000135`)
 
-
+Depending on your Wine distribution:
+- **On Multiarch Wine (Ubuntu/Debian)**: `wineasio.so` must be 32-bit ELF and installed in `i386-unix/`.
+- **On Pure WoW64 Wine**: `wineasio.so` must be 64-bit ELF and installed in `x86_64-unix/`.
+- `Makefile.wine11` handles this automatically during `make -f Makefile.wine11 install32`.
+- DLLs are copied to both Wine's library directory and WINEPREFIX's `system32` / `syswow64`.
 
 ---
 
 ## Technical Details (Wine 11 Architecture)
 
-Wine 11 requires a split architecture:
+Wine 11 requires a split PE/Unix architecture:
 
 | Component | Description | Built With | Install Location |
 |-----------|-------------|------------|------------------|
 | `wineasio64.dll` | 64-bit PE DLL (Windows code) | mingw-w64 `-m64` | `x86_64-windows/` |
 | `wineasio64.so` | 64-bit Unix library (JACK interface) | gcc `-m64` | `x86_64-unix/` |
 | `wineasio.dll` | 32-bit PE DLL (Windows code) | mingw-w64 `-m32` | `i386-windows/` |
-| `wineasio.so` | **64-bit** Unix library for 32-bit PE | gcc **`-m64`** | **`x86_64-unix/`** |
-
-**Critical:** In Wine 11 WoW64, the Unix library for 32-bit PE is 64-bit, not 32-bit!
+| `wineasio.so` (Multiarch) | 32-bit Unix library (with `-malign-double`) | gcc `-m32 -malign-double` | `i386-unix/` |
+| `wineasio.so` (Pure WoW64) | 64-bit Unix library for 32-bit PE | gcc `-m64` | `x86_64-unix/` |
 
 The PE DLL handles:
 - COM/ASIO interface
@@ -401,9 +414,11 @@ The PE DLL handles:
 - Host application callbacks
 
 The Unix SO handles:
-- JACK connection and audio processing
+- PipeWire/JACK connection and audio processing
 - Real-time audio callbacks
 - Buffer management
+
+Communication between PE and Unix uses Wine's `__wine_unix_call` interface.
 
 Communication between PE and Unix uses Wine's `__wine_unix_call` interface.
 
