@@ -57,6 +57,60 @@ Pure WoW64: 32-bit PE (wineasio.dll) → WoW64 Thunking → 64-bit Unix (x86_64-
 
 ---
 
+## Quick Start: Automated Installation & Deployment
+
+WineASIO provides a unified script `install.sh` that automates system installation, GUI setup, runtime dependency checking, and WinePrefix registration.
+
+### One-Command Setup
+
+```sh
+sudo ./install.sh
+```
+
+This single command will:
+1. **Detect Wine Environment:** Automatically locates Wine (Staging, Stable, or custom) and targets your user's Wine prefix (`~/.wine`) without root permission corruption.
+2. **Check Audio Dependencies:** Validates 64-bit and 32-bit JACK / PipeWire-JACK libraries and audio group membership.
+3. **Install System Libraries:** Installs 64-bit and 32-bit PE DLLs and Unix `.so` files to Wine's system directories with multiarch auto-detection.
+4. **Install GUI Control Panel:** Installs `wineasio-settings` to `/usr/bin/wineasio-settings`.
+5. **Register Drivers:** Registers both 64-bit (`wineasio64.dll`) and 32-bit WoW64 (`wineasio.dll`) drivers cleanly.
+6. **Verify Status:** Verifies registry keys (`HKLM\Software\ASIO\WineASIO` and `HKLM\Software\WOW6432Node\ASIO\WineASIO`).
+
+### Deploying to Other Computers (Portable Package)
+
+You can package prebuilt binaries into a standalone, portable deployment tarball that can be transferred and installed on another machine **without requiring compilers or dev packages** (e.g. `mingw-w64`):
+
+```sh
+# 1. On your build machine, create a deployment bundle:
+./install.sh --package
+
+# 2. Transfer the generated 'wineasio-deploy-YYYYMMDD.tar.gz' to the target PC.
+
+# 3. On the target PC, extract and install:
+tar -xzvf wineasio-deploy-*.tar.gz
+cd wineasio-deploy-*
+sudo ./install.sh
+```
+
+If the target machine runs 32-bit audio applications (e.g., OpenMPT 32-bit, S-YXG100), ensure 32-bit JACK support is installed:
+```sh
+# Ubuntu / Debian / Mint:
+sudo apt install pipewire-jack:i386
+```
+
+### Script Options
+
+| Option | Description |
+| :--- | :--- |
+| `sudo ./install.sh` | Full installation, setup, registration, and verification (Default) |
+| `./install.sh --register-only` | Register WineASIO in current user's `~/.wine` without root permissions |
+| `./install.sh --register-only --prefix ~/.custom-prefix` | Register into a specific custom Wine prefix |
+| `./install.sh --verify` | Verify current installation and registry status |
+| `./install.sh --unregister` | Unregister WineASIO from Wine prefix |
+| `./install.sh --package` | Bundle binaries and installer for deploying to another computer |
+| `wineasio-register` | Standard alias for `./install.sh --register-only` |
+
+---
+
 ## Building for Wine 11+
 
 ### Prerequisites
@@ -207,12 +261,16 @@ After installing, register WineASIO in your Wine prefix:
 
 ```sh
 wineasio-register
+# or
+./install.sh --register-only
 ```
 
 ### Custom Wine Prefix
 
 ```sh
 env WINEPREFIX=~/my-daw-prefix wineasio-register
+# or
+./install.sh --register-only --prefix ~/my-daw-prefix
 ```
 
 ---
