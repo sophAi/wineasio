@@ -434,9 +434,14 @@ package_bundle() {
     rm -rf "$BUNDLE_DIR"
     mkdir -p "$BUNDLE_DIR/build_wine11" "$BUNDLE_DIR/gui"
 
-    # Copy install script
+    # Copy install & setup scripts
     cp "$SCRIPT_DIR/install.sh" "$BUNDLE_DIR/"
     chmod +x "$BUNDLE_DIR/install.sh"
+    if [ -f "$SCRIPT_DIR/setup-pipewire-jack.sh" ]; then
+        cp "$SCRIPT_DIR/setup-pipewire-jack.sh" "$BUNDLE_DIR/"
+        chmod +x "$BUNDLE_DIR/setup-pipewire-jack.sh"
+        ln -sf setup-pipewire-jack.sh "$BUNDLE_DIR/disable-jackdbus.sh"
+    fi
 
     # Copy binaries
     cp "$DLL64" "$BUNDLE_DIR/build_wine11/wineasio64.dll"
@@ -460,11 +465,15 @@ package_bundle() {
 To install and register WineASIO on this computer:
 
 1. Open a terminal in this directory.
-2. Run:
+2. (Recommended) Configure PipeWire-JACK and disable conflicting jackdbus:
+   ```bash
+   sudo ./setup-pipewire-jack.sh
+   ```
+3. Install and register WineASIO:
    ```bash
    sudo ./install.sh
    ```
-3. (Optional) If running 32-bit audio applications (e.g., OpenMPT 32-bit):
+4. (Optional) If running 32-bit audio applications (e.g., OpenMPT 32-bit):
    ```bash
    sudo apt install pipewire-jack:i386
    ```

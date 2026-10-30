@@ -424,15 +424,25 @@ x86_64-w64-mingw32-objdump -p wineasio.dll | grep 'DLL Name'
 ### JACK not connecting / PipeWire-JACK
 
 1. If using PipeWire, ensure `pipewire-jack` (and `pipewire-jack:i386` for 32-bit apps) is installed.
-2. WineASIO automatically prioritizes PipeWire's `libjack.so.0` path (`/usr/lib/.../pipewire-0.3/jack/libjack.so.0`) to avoid conflicts with traditional inactive `jackd` sockets (`status=0x11`).
-3. To configure PipeWire's default sample rate persistently across reboots (e.g., 44.1 kHz), add `~/.config/pipewire/pipewire.conf.d/10-clock.conf`:
+2. **Disable `jackdbus` & Enable Global PipeWire-JACK:**
+   If `jackd2` or `jackdbus` is installed on your Linux distribution, D-Bus may automatically activate `jackdbus auto`, which attempts to take over hardware soundcards directly and causes PipeWire-JACK / WineASIO to fail or hang.
+   To permanently disable `jackdbus` and enable **global system-wide PipeWire-JACK** (so all 64-bit and 32-bit apps automatically use PipeWire without needing `pw-jack`):
+   ```sh
+   sudo ./setup-pipewire-jack.sh
+   ```
+   To check status:
+   ```sh
+   ./setup-pipewire-jack.sh --status
+   ```
+3. WineASIO automatically prioritizes PipeWire's `libjack.so.0` path (`/usr/lib/.../pipewire-0.3/jack/libjack.so.0`) to avoid conflicts with traditional inactive `jackd` sockets (`status=0x11`).
+4. To configure PipeWire's default sample rate persistently across reboots (e.g., 44.1 kHz), add `~/.config/pipewire/pipewire.conf.d/10-clock.conf`:
    ```spa-json
    context.properties = {
        default.clock.rate          = 44100
        default.clock.allowed-rates = [ 44100 48000 88200 96000 192000 ]
    }
    ```
-4. Check running ports with `jack_lsp` (or `pw-jack jack_lsp`).
+5. Check running ports with `jack_lsp` (or `pw-jack jack_lsp`).
 
 ### 32-bit apps: crash on playback (`c0000409`) or sample rate reads 0 Hz
 

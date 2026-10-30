@@ -1,0 +1,1 @@
+setup-pipewire-jack.sh
