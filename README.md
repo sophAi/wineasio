@@ -409,7 +409,7 @@ A PyQt5/PyQt6 control panel is included for configuring WineASIO settings and ma
 1. Your DAW calls the ASIO `ControlPanel()` function
 2. WineASIO's Unix-side code uses `fork()/exec()` to launch `wineasio-settings`
 3. The Python/PyQt GUI reads and writes settings to the Wine registry, through the `regedit` of the Wine installation that runs the DAW (found from the DAW process); started any other way, it uses the `regedit` in `PATH`
-4. **PipeWire Real-time Control**: The panel allows directly selecting the global PipeWire sample rate (`Auto`, `44100`, `48000`, `88200`, `96000`, `192000`) and dynamically updates the system clock rate and quantum (buffer size) via `pw-metadata` upon saving.
+4. **PipeWire Real-time & Persistent Control**: The panel allows directly selecting the global PipeWire sample rate (`Auto (System Default)`, `44100`, `48000`, `88200`, `96000`, `192000`). Upon saving, it dynamically updates the system clock rate and quantum (buffer size) via `pw-metadata`, and automatically persists the sample rate to `~/.config/pipewire/pipewire.conf.d/10-clock.conf` so it survives reboots (selecting `Auto (System Default)` removes that file).
 
 The panel sets every option in the table above except Client name. Below the options it lists the `WINEASIO_*` variables set in its environment in a format the driver accepts, since these take precedence over what the panel saves; opened from the DAW, that is the DAW's environment.
 
@@ -535,7 +535,7 @@ x86_64-w64-mingw32-objdump -p wineasio.dll | grep 'DLL Name'
    ./setup-pipewire-jack.sh --status
    ```
 3. WineASIO automatically prioritizes PipeWire's `libjack.so.0` path (`/usr/lib/.../pipewire-0.3/jack/libjack.so.0`) to avoid conflicts with traditional inactive `jackd` sockets (`status=0x11`).
-4. To configure PipeWire's default sample rate persistently across reboots (e.g., 44.1 kHz), add `~/.config/pipewire/pipewire.conf.d/10-clock.conf`:
+4. To configure PipeWire's default sample rate persistently across reboots (e.g., 44.1 kHz), select it in `wineasio-settings` (which writes `~/.config/pipewire/pipewire.conf.d/10-clock.conf` automatically), or create the file manually:
    ```spa-json
    context.properties = {
        default.clock.rate          = 44100

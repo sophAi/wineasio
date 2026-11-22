@@ -57,17 +57,41 @@ def getPipeWireSettings():
         pass
     return rate
 
+def savePipeWireConfig(sample_rate_str: str):
+    conf_dir = os.path.join(os.path.expanduser("~"), ".config", "pipewire", "pipewire.conf.d")
+    conf_path = os.path.join(conf_dir, "10-clock.conf")
+    try:
+        if sample_rate_str.startswith("Auto"):
+            if os.path.exists(conf_path):
+                os.remove(conf_path)
+        elif sample_rate_str.isdigit():
+            os.makedirs(conf_dir, exist_ok=True)
+            content = (
+                "# Managed by wineasio-settings\n"
+                "context.properties = {\n"
+                "    default.clock.rate          = %s\n"
+                "    default.clock.allowed-rates = [ 44100 48000 88200 96000 192000 ]\n"
+                "}\n" % sample_rate_str
+            )
+            with open(conf_path, "w", encoding="utf-8") as fh:
+                fh.write(content)
+    except Exception as e:
+        print("wineasio-settings: failed to persist pipewire config:", e, file=sys.stderr)
+
 def applyPipeWireSettings(sample_rate_str: str, buffer_size: int = None):
     try:
         if sample_rate_str.startswith("Auto"):
             subprocess.run(["pw-metadata", "-n", "settings", "0", "clock.force-rate", "0"], check=False)
         else:
             subprocess.run(["pw-metadata", "-n", "settings", "0", "clock.force-rate", sample_rate_str], check=False)
+            subprocess.run(["pw-metadata", "-n", "settings", "0", "clock.rate", sample_rate_str], check=False)
         
         if buffer_size:
             subprocess.run(["pw-metadata", "-n", "settings", "0", "clock.force-quantum", str(buffer_size)], check=False)
     except Exception as e:
         print("wineasio-settings: failed to apply pipewire settings:", e, file=sys.stderr)
+
+    savePipeWireConfig(sample_rate_str)
 
 HOME = QDir.homePath()
 
